@@ -187,7 +187,7 @@ The connector attaches exemplars (`exemplars.enabled: true`), and LGTM's Prometh
 In Grafana, **Explore → Prometheus**, query `lab_duration_milliseconds_bucket`, and turn on **Exemplars**. The diamonds under the graph each carry a `trace_id`; clicking one opens that trace in Tempo.
 
 ```bash
-# the same thing without the UI
+# the same thing without the UI (BSD date; on Linux use -d '20 minutes ago')
 curl -s --data-urlencode 'query=lab_duration_milliseconds_bucket' \
   --data-urlencode "start=$(date -u -v-20M +%Y-%m-%dT%H:%M:%SZ)" \
   --data-urlencode "end=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
