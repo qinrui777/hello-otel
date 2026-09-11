@@ -9,3 +9,4 @@ tests/
 requirements-dev.txt
 README.md
 LICENSE
+pytest.ini
