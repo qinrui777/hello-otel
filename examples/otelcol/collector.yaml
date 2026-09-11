@@ -1,0 +1,96 @@
+# Collector config for the local lab. See ../../docs/local-stack.md
+#
+# Two things here are worth reading closely:
+#   1. Batching lives in the exporter's sending_queue, not in a `batch` processor.
+#   2. There are two traces pipelines. Span metrics are computed from every span;
+#      only the storage pipeline is sampled. Sampling first would give you RED
+#      metrics that describe 10% of your traffic and claim to describe all of it.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+connectors:
+  # Turns spans into RED metrics (Rate, Errors, Duration) with no app changes.
+  # It sits in the exporter slot of one pipeline and the receiver slot of another.
+  span_metrics:
+    # The LGTM image generates span metrics of its own (traces_span_metrics_*).
+    # This namespace keeps yours separate so you can tell which component
+    # produced which series: lab_calls_total, lab_duration_milliseconds_*.
+    namespace: lab
+    histogram:
+      explicit:
+        buckets: [5ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+    dimensions:
+      - name: http.route
+      - name: http.response.status_code
+    exemplars:
+      enabled: true
+
+processors:
+  # Must come first in every pipeline: it refuses data before anything
+  # downstream gets a chance to allocate memory for it.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 15
+
+  # Head sampling (in the SDK) decides before it knows how the request ended,
+  # so a 10% head sample throws away 90% of your errors. Tail sampling waits
+  # for the whole trace, then keeps the interesting ones.
+  tail_sampling:
+    decision_wait: 10s
+    policies:
+      - name: keep-all-errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: keep-all-slow
+        type: latency
+        latency:
+          threshold_ms: 500
+      - name: sample-the-boring-rest
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 10
+
+exporters:
+  # The single most useful thing in this file while you are learning.
+  debug:
+    verbosity: detailed
+
+  otlp_grpc/lgtm:
+    endpoint: lgtm:4317
+    tls:
+      insecure: true
+    sending_queue:
+      batch: {}
+
+service:
+  pipelines:
+    # Every span, unsampled, so the metrics are honest.
+    traces/metrics:
+      receivers: [otlp]
+      processors: [memory_limiter]
+      exporters: [span_metrics]
+
+    # Sampled spans, stored in Tempo and echoed to the terminal.
+    traces/storage:
+      receivers: [otlp]
+      processors: [memory_limiter, tail_sampling]
+      exporters: [debug, otlp_grpc/lgtm]
+
+    # Add `debug` here too if you want to watch the connector's output, but be
+    # warned: it prints every series every flush and will bury the span output.
+    metrics:
+      receivers: [otlp, span_metrics]
+      processors: [memory_limiter]
+      exporters: [otlp_grpc/lgtm]
+
+  telemetry:
+    logs:
+      level: info

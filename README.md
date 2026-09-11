@@ -49,14 +49,16 @@ POST /v1/chat                       Server     the request arrives
 
 Clean up with `docker rm -f jaeger hello-otel && docker network rm otel-demo`.
 
+This gets you a trace quickly by keeping the Collector out of sight. To build the full picture instead — Prometheus, Tempo, Loki and Grafana behind a Collector whose config you write yourself — follow [**docs/local-stack.md**](docs/local-stack.md).
+
 ## Endpoints
 
-| Method | Path        | What it does                                                                  |
-|--------|-------------|-------------------------------------------------------------------------------|
-| `GET`  | `/healthz`  | Liveness. Deliberately excluded from tracing — probes are noise                |
-| `POST` | `/v1/chat`  | The showcase: nested manual spans wrapped around a real call to `/v1/echo`     |
-| `POST` | `/v1/echo`  | The downstream leg, reached over HTTP rather than in-process                   |
-| `GET`  | `/v1/boom`  | Fails on purpose, so the demo also shows an `ERROR` span with an exception event |
+| Method | Path       | What it does                                                                     |
+|--------|------------|----------------------------------------------------------------------------------|
+| `GET`  | `/healthz` | Liveness. Deliberately excluded from tracing — probes are noise                  |
+| `POST` | `/v1/chat` | The showcase: nested manual spans wrapped around a real call to `/v1/echo`       |
+| `POST` | `/v1/echo` | The downstream leg, reached over HTTP rather than in-process                     |
+| `GET`  | `/v1/boom` | Fails on purpose, so the demo also shows an `ERROR` span with an exception event |
 
 Interactive docs are at <http://localhost:8000/docs>.
 
@@ -64,13 +66,13 @@ Interactive docs are at <http://localhost:8000/docs>.
 
 Every variable below is a **standard OpenTelemetry variable read by the SDK itself**, not by this app's code. That is why [`hello_otel/tracing.py`](hello_otel/tracing.py) is under fifty lines and hardcodes nothing, and why the same image drops into any collector setup unchanged.
 
-| Variable                      | Default                 | Purpose                                                                    |
-|-------------------------------|-------------------------|----------------------------------------------------------------------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset                   | OTLP/gRPC collector address. **Unset disables tracing entirely**            |
-| `OTEL_SERVICE_NAME`           | `unknown_service`       | Service name shown in your backend                                          |
-| `OTEL_RESOURCE_ATTRIBUTES`    | unset                   | Extra resource attributes, e.g. `deployment.environment=local`              |
-| `OTEL_TRACES_SAMPLER`         | `parentbased_always_on` | Head-based sampling, e.g. `parentbased_traceidratio` with `..._ARG=0.1`     |
-| `SELF_URL`                    | `http://127.0.0.1:8000` | Where `/v1/chat` reaches this same app. The only non-standard variable      |
+| Variable                      | Default                 | Purpose                                                                 |
+|-------------------------------|-------------------------|-------------------------------------------------------------------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset                   | OTLP/gRPC collector address. **Unset disables tracing entirely**        |
+| `OTEL_SERVICE_NAME`           | `unknown_service`       | Service name shown in your backend                                      |
+| `OTEL_RESOURCE_ATTRIBUTES`    | unset                   | Extra resource attributes, e.g. `deployment.environment=local`          |
+| `OTEL_TRACES_SAMPLER`         | `parentbased_always_on` | Head-based sampling, e.g. `parentbased_traceidratio` with `..._ARG=0.1` |
+| `SELF_URL`                    | `http://127.0.0.1:8000` | Where `/v1/chat` reaches this same app. The only non-standard variable  |
 
 See [`.env.example`](.env.example).
 
@@ -92,11 +94,11 @@ The tests run against a real uvicorn server on a random port rather than an in-p
 
 Published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`:
 
-| Tag              | Points at                          |
-|------------------|------------------------------------|
-| `main`           | Latest commit on the default branch |
-| `1.2.3`, `1.2`   | A `v1.2.3` release tag              |
-| `sha-<short>`    | One specific commit                 |
+| Tag            | Points at                           |
+|----------------|-------------------------------------|
+| `main`         | Latest commit on the default branch |
+| `1.2.3`, `1.2` | A `v1.2.3` release tag              |
+| `sha-<short>`  | One specific commit                 |
 
 [`.github/workflows/publish.yml`](.github/workflows/publish.yml) runs the tests first and only publishes if they pass. Pull requests build the image but never push, so the Dockerfile stays verified without publishing a tag per proposed change.
 
@@ -104,13 +106,13 @@ Published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`:
 
 ## How it is built
 
-| Choice                                  | Why                                                                                                                |
-|-----------------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| Choice                                             | Why                                                                                                                     |
+|----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
 | Programmatic setup, not `opentelemetry-instrument` | The `TracerProvider` / `BatchSpanProcessor` / `Resource` wiring is the part worth reading. The zero-code agent hides it |
-| Digest-pinned base image                | A rebuild months from now gets the same base, not whatever `:3.13-slim` points at that day                          |
-| Runs as uid 10001                       | Nothing here needs root, so the image should not hand it to anyone who gets in                                      |
-| ASGI `http send` / `http receive` spans excluded | Protocol plumbing, not application behaviour. Excluding them halves the span count of every trace           |
-| `trust_env=False` on the self-call      | A loopback request should never be routed through a `HTTP_PROXY` picked up from the environment                     |
+| Digest-pinned base image                           | A rebuild months from now gets the same base, not whatever `:3.13-slim` points at that day                              |
+| Runs as uid 10001                                  | Nothing here needs root, so the image should not hand it to anyone who gets in                                          |
+| ASGI `http send` / `http receive` spans excluded   | Protocol plumbing, not application behaviour. Excluding them halves the span count of every trace                       |
+| `trust_env=False` on the self-call                 | A loopback request should never be routed through a `HTTP_PROXY` picked up from the environment                         |
 
 Built on the patterns in the [official OpenTelemetry demo](https://github.com/open-telemetry/opentelemetry-demo) — see its [`src/agent`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/agent) FastAPI service — and the [OpenTelemetry Python exporter docs](https://opentelemetry.io/docs/languages/python/exporters/).
 
